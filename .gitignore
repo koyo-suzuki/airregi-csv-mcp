@@ -1,0 +1,14 @@
+node_modules
+data/
+data-test/
+downloads/
+*.csv
+*.tsv
+*.xlsx
+auth.json
+.env
+.env.*
+!.env.example
+.playwright-cli/
+*.log
+.DS_Store
