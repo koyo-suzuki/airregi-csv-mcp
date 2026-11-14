@@ -18,11 +18,17 @@
 //   downloadButton  CSVダウンロードボタンのアクセシブルな名前
 //   sourcePrefix    エアレジが付けるファイル名の先頭（期間 YYYYMMDD-YYYYMMDD の前まで）
 //   filePrefix      保存するときのファイル名の先頭
+//   period: false   期間のない帳票（任意）。店舗ごとに1ファイルで、from/to は指定しない。
+//                   setPeriod・checkPeriod・sourcePeriod は使わない
+//   sourceName      エアレジが付けるファイル名の、sourcePrefix より後ろの形（任意。正規表現）。
+//                   期間のない帳票で使う
+//   headerLines     CSVの先頭の、データではない行の数（任意。ないときは1）
 
 import { AppError, todayInJapan } from './core.mjs';
 
 const MENU = 'https://airregi.jp/CLP/view/salesListByMenu/';
 const DAILY = 'https://airregi.jp/CLP/view/salesList/';
+const SETTING_MENU = 'https://airregi.jp/CLP/view/settingMenu/';
 
 function monthEnd(date) {
   const [y, m] = date.split('-').map(Number);
@@ -137,6 +143,24 @@ export const REPORTS = [
     sourcePrefix: '会計明細_',
     filePrefix: '会計明細',
   },
+  {
+    id: 'product_settings',
+    name: '商品設定',
+    description: '登録している商品とバリエーションの設定（商品一括編集用のCSV）。期間はなく、店舗ごとに今の設定を1ファイルで取得します。',
+    verified: true,
+    period: false,
+    // 商品設定の画面で「商品をCSVで編集する」を押すと、ファイルで一括編集の画面（#/upload）が開く。
+    // そこに「エクセルファイル」と「CSVファイル」のダウンロードがあり、CSVの方を押す。
+    url: SETTING_MENU,
+    downloadMenu: '商品をCSVで編集する',
+    downloadButton: '編集に慣れている方向き CSVファイル ダウンロード',
+    // ファイル名の数字はダウンロードした日時（日本時間、YYYYMMDDhhmmss）。例：商品一括編集_20261115013640.csv
+    sourcePrefix: '商品一括編集_',
+    sourceName: /^\d{14}\.csv$/i,
+    // 1行目は書式の版（"v1400" など）、2行目が見出し。
+    headerLines: 2,
+    filePrefix: '商品設定',
+  },
 ];
 
 export function getReport(id) {
@@ -146,5 +170,5 @@ export function getReport(id) {
 }
 
 export function describeReports() {
-  return REPORTS.map(({ id, name, description, verified }) => ({ id, name, description, verified }));
+  return REPORTS.map(({ id, name, description, verified, period }) => ({ id, name, description, verified, period: period !== false }));
 }

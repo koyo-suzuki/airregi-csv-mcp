@@ -57,6 +57,17 @@ export function monthChunks(from, to, now = Date.now()) {
   return chunks;
 }
 
+// 1店舗あたりに取得する単位。期間のある帳票は月ごと、期間のない帳票（period: false）は1回だけ。
+// 期間のない帳票は from/to を受け付けず、期間のある帳票は from/to を必ず求める。
+export function reportChunks(report, from, to, now = Date.now()) {
+  if (report.period === false) {
+    if (from !== undefined || to !== undefined) throw new AppError('PERIOD_NOT_APPLICABLE', `帳票「${report.name}」には期間がありません。from と to を指定せずに実行してください。`);
+    return [{}];
+  }
+  if (from === undefined || to === undefined) throw new AppError('PERIOD_REQUIRED', `帳票「${report.name}」は期間（from と to）の指定が必要です。`);
+  return monthChunks(from, to, now);
+}
+
 // 0o700 / 0o600 は Mac と Linux で効く。Windows ではユーザーフォルダの権限で守る。
 export async function ensurePrivateDir(dir) {
   await fs.mkdir(dir, { recursive: true, mode: 0o700 });
@@ -70,12 +81,13 @@ export async function writePrivate(file, value) {
 }
 
 // CSVの中身を軽く確かめる。ヘッダーだけのCSVを「データあり」と扱わないため。
-export function inspectCsv(buffer) {
+// headerLines は先頭のデータではない行の数（商品設定のCSVは、書式の版の行と見出しの2行）。
+export function inspectCsv(buffer, headerLines = 1) {
   let text;
   try { text = new TextDecoder('utf-8', { fatal: true }).decode(buffer); }
   catch { text = new TextDecoder('shift_jis').decode(buffer); }
   text = text.replace(/^\uFEFF/, '');
   const lines = text.split(/\r\n|\n|\r/).filter(l => l.trim() !== '');
   // 項目内の改行は数え分けないので、行数は目安。
-  return { header: lines[0] ?? '', dataLines: Math.max(0, lines.length - 1) };
+  return { header: lines[headerLines - 1] ?? '', dataLines: Math.max(0, lines.length - headerLines) };
 }

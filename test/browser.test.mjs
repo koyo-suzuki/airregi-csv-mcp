@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { AirregiBrowser, periodLabel } from '../src/browser.mjs';
+import { AirregiBrowser, periodLabel, savedFilename } from '../src/browser.mjs';
 import { AppError } from '../src/core.mjs';
 import { getReport } from '../src/reports.mjs';
 
@@ -137,4 +137,42 @@ test('ログインを待つのは時間まで', async () => {
   await assert.rejects(() => b.loginAndWait({ timeoutMs: 5, intervalMs: 2 }), { code: 'LOGIN_TIMEOUT' });
   b.isOpen = () => false;
   await assert.rejects(() => b.loginAndWait({ intervalMs: 1 }), { code: 'BROWSER_CLOSED' });
+});
+
+test('期間のない帳票は、店舗ごとに1ファイル取得する', async () => {
+  const dir = await tmp();
+  const b = fakeBrowser(dir, {});
+  const seen = [];
+  b.downloadOne = async (_r, store, chunk) => { seen.push([store, chunk]); return { file: path.join(dir, store), sourceFilename: 'x.csv', dataLines: 5 }; };
+  const r = await b.downloadBatch({ report: getReport('product_settings'), stores: ['A', 'B'], directory: dir });
+  assert.equal(r.status, 'completed');
+  assert.deepEqual(seen, [['A', {}], ['B', {}]]);
+  assert.deepEqual(r.results.map(x => [x.store, x.status, 'from' in x]), [['A', 'downloaded', false], ['B', 'downloaded', false]]);
+  await assert.rejects(() => b.downloadBatch({ report: getReport('product_settings'), stores: ['A'], from: '2025-01-01', to: '2025-01-31', directory: dir }), { code: 'PERIOD_NOT_APPLICABLE' });
+});
+
+test('期間のない帳票で店舗を開けなければ、その店舗を失敗にして次へ進む', async () => {
+  const dir = await tmp();
+  const b = fakeBrowser(dir, { openFails: { A: new AppError('UNKNOWN_STORE', 'x') } });
+  const r = await b.downloadBatch({ report: getReport('product_settings'), stores: ['A', 'B'], directory: dir });
+  assert.equal(r.status, 'partial');
+  assert.deepEqual(r.results.map(x => [x.store, x.status]), [['A', 'failed'], ['B', 'downloaded']]);
+});
+
+test('保存するファイル名と、エアレジのファイル名の確認', () => {
+  const ps = getReport('product_settings');
+  assert.equal(savedFilename(ps, '渋谷/店', {}, '商品一括編集_20261115013640.csv'), '商品設定_20261115_渋谷_店.csv');
+  for (const bad of ['商品一括編集_20261115.csv', '商品一括編集_20261115013640.xlsx', '商品一括編集_20261115013640.zip', 'カテゴリー_20261115013640.csv'])
+    assert.throws(() => savedFilename(ps, 'A', {}, bad), { code: 'DOWNLOAD_NAME_MISMATCH' });
+  const vs = getReport('variation_sales');
+  const chunk = { from: '2026-01-01', to: '2026-01-31' };
+  assert.equal(savedFilename(vs, 'A', chunk, 'バリエーション別売上_20260101-20260131.csv'), 'バリエーション別売上_20260101-20260131_A.csv');
+  assert.throws(() => savedFilename(vs, 'A', chunk, 'バリエーション別売上_20260101-20260130.csv'), { code: 'DOWNLOAD_NAME_MISMATCH' });
+});
+
+test('期間のない帳票は期間を選ばない', async () => {
+  const b = new AirregiBrowser({ dataDir: await tmp() });
+  b.setPeriod = async () => { throw new Error('期間を選んではいけない'); };
+  b.verifyStore = async () => { throw new AppError('STOP', 'ここまで来ればよい'); };
+  await assert.rejects(() => b.downloadOne(getReport('product_settings'), 'A', {}, '.'), { code: 'STOP' });
 });
