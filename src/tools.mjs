@@ -1,18 +1,18 @@
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { AppError, monthChunks, publicError } from './core.mjs';
+import { AppError, reportChunks, publicError } from './core.mjs';
 import { describeReports, getReport } from './reports.mjs';
 import { MAX_FILES } from './browser.mjs';
 
 // MCPとコマンドで共通の入力チェック。取得を始める前に、合わない指定をすぐに知らせる。
 export function planDownload({ report: reportId, stores, from, to, output_dir, now = Date.now() }) {
   const report = getReport(reportId);
-  const chunks = monthChunks(from, to, now);
+  // 期間のない帳票は from/to を省き、店舗ごとに1ファイル。期間のある帳票は月ごとに分ける。
+  const chunks = reportChunks(report, from, to, now);
   if (!Array.isArray(stores) || !stores.length || new Set(stores).size !== stores.length) throw new AppError('INVALID_STORES', '店舗を1件以上、重複せずに指定してください。list_stores で店舗名を確認できます。');
   // 月単位の帳票などは、取得を始める前に期間を確かめる。
   if (report.checkPeriod) for (const c of chunks) report.checkPeriod(c, now);
-  if (stores.length * chunks.length > MAX_FILES) throw new AppError('TOO_MANY', `一度に取得できるのは ${MAX_FILES} ファイル（店舗数 × 月数）までです。`);
-  if (output_dir !== undefined && !path.isAbsolute(output_dir)) throw new AppError('INVALID_OUTPUT_DIR', 'output_dir は絶対パスで指定してください。');
+  if (stores.length * chunks.length > MAX_FILES) throw new AppError('TOO_MANY', `一度に取得できるのは ${MAX_FILES} ファイル（店舗数 × 月数）までです。`);  if (output_dir !== undefined && !path.isAbsolute(output_dir)) throw new AppError('INVALID_OUTPUT_DIR', 'output_dir は絶対パスで指定してください。');
   return { report, chunks };
 }
 

@@ -6,7 +6,7 @@ import { parseArgs } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { AppError, dataDirectory, publicError, todayInJapan } from './core.mjs';
 import { AirregiBrowser } from './browser.mjs';
-import { describeReports } from './reports.mjs';
+import { describeReports, getReport } from './reports.mjs';
 import { planDownload, stamp } from './tools.mjs';
 
 export const EXIT = { OK: 0, ERROR: 1, PARTIAL: 2, LOGIN_REQUIRED: 3, USAGE: 64 };
@@ -23,6 +23,7 @@ download のオプション:
   --report <ID>           帳票のID（reports で確認）。必須
   --store <店舗名>        店舗。何回でも指定できる
   --all-stores            全店舗（--store の代わり）
+  期間（どれか1つ。期間のない帳票 product_settings では付けない）:
   --last-month            先月の1日から月末まで
   --this-month            今月の1日から今日まで
   --month <YYYY-MM>       指定した月の1日から月末まで
@@ -44,6 +45,8 @@ const OPTIONS = {
   from: { type: 'string' }, to: { type: 'string' }, out: { type: 'string' },
   json: { type: 'boolean' }, headless: { type: 'boolean' }, help: { type: 'boolean', short: 'h' },
 };
+
+const PERIOD_OPTIONS = ['last-month', 'this-month', 'month', 'from', 'to'];
 
 function monthEnd(y, m) { return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10); }
 function pad(n) { return String(n).padStart(2, '0'); }
@@ -97,7 +100,7 @@ export async function run(argv, { browser, dataDir, stdout = process.stdout, std
   try {
     if (command === 'reports') {
       const reports = describeReports();
-      print({ reports }, reports.map(r => `${r.id}\t${r.name}\t${r.description}`).join('\n'));
+      print({ reports }, reports.map(r => `${r.id}\t${r.name}\t${r.period ? '期間あり' : '期間なし'}\t${r.description}`).join('\n'));
       return EXIT.OK;
     }
     if (command === 'stores') {
@@ -116,20 +119,25 @@ export async function run(argv, { browser, dataDir, stdout = process.stdout, std
       if (!v.report) throw new AppError('USAGE', '--report で帳票を指定してください（reports で一覧を確認できます）。');
       if (v['all-stores'] && v.store) throw new AppError('USAGE', '--store と --all-stores は一緒に使えません。');
       if (!v['all-stores'] && !v.store) throw new AppError('USAGE', '--store で店舗を指定するか、--all-stores を付けてください。');
-      const { from, to } = resolvePeriod(v, now());
+      // 期間のない帳票（商品設定など）は、期間のオプションを付けない。
+      const periodless = getReport(v.report).period === false;
+      if (periodless && PERIOD_OPTIONS.some(k => v[k] !== undefined && v[k] !== false))
+        throw new AppError('USAGE', `帳票「${v.report}」には期間がありません。--last-month などの期間のオプションを付けずに実行してください。`);
+      const { from, to } = periodless ? {} : resolvePeriod(v, now());
       const output = v.out !== undefined ? path.resolve(v.out) : undefined;
       // 店舗一覧を読む前に、帳票と期間の指定を確かめる（店舗は仮の値で確かめる）。
       planDownload({ report: v.report, stores: v.store ?? ['_'], from, to, output_dir: output, now: now() });
       const stores = v['all-stores'] ? await browser.listStores() : v.store;
       const { report } = planDownload({ report: v.report, stores, from, to, output_dir: output, now: now() });
       const directory = output ?? path.join(dataDir, 'downloads', `${stamp(new Date(now()))}_${report.id}`);
-      err(`${report.name}を取得します：${stores.length}店舗、${from} 〜 ${to}`);
+      const span = p => p.from ? ` ${p.from} 〜 ${p.to}` : '';
+      err(`${report.name}を取得します：${stores.length}店舗` + (periodless ? '（期間なし・店舗ごとに1ファイル）' : `、${from} 〜 ${to}`));
       const result = await browser.downloadBatch({ report, stores, from, to, directory, signal,
         onProgress: p => {
-          if (p.stage === 'downloading') err(`[${p.done + 1}/${p.total}] ${p.store} ${p.from} 〜 ${p.to}`);
+          if (p.stage === 'downloading') err(`[${p.done + 1}/${p.total}] ${p.store}${span(p)}`);
           if (p.stage === 'failed') err(`  失敗：${p.store}：${p.error.message}`);
         } });
-      const lines = result.results.map(r => `${STATUS_LABEL[r.status]}\t${r.store}\t${r.from} 〜 ${r.to}` + (r.error ? `\t${r.error.message}` : ''));
+      const lines = result.results.map(r => `${STATUS_LABEL[r.status]}\t${r.store}` + (r.from ? `\t${r.from} 〜 ${r.to}` : '') + (r.error ? `\t${r.error.message}` : ''));
       print(result, [`${OVERALL_LABEL[result.status]}。保存先：${result.directory}`, ...lines].join('\n'));
       const code = exitFor(result);
       if (code === EXIT.LOGIN_REQUIRED) err('ログインが必要です。airregi-csv login でログインしてから、もう一度実行してください。');

@@ -18,7 +18,7 @@ test('stdio でつながり、ツールを呼べる（Chrome は起動しない�
     const { tools } = await client.listTools();
     assert.deepEqual(tools.map(t => t.name).sort(), ['cancel_download', 'get_download', 'list_reports', 'list_stores', 'open_login', 'start_download', 'status']);
     const start = tools.find(t => t.name === 'start_download');
-    assert.deepEqual(start.inputSchema.required.sort(), ['from', 'report', 'stores', 'to']);
+    assert.deepEqual(start.inputSchema.required.sort(), ['report', 'stores']);
 
     const reports = JSON.parse((await client.callTool({ name: 'list_reports', arguments: {} })).content[0].text);
     assert.ok(reports.reports.length >= 4);

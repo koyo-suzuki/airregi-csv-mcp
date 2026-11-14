@@ -86,3 +86,19 @@ test('月単位の帳票で月の途中から始まる期間は、取得を始�
   const ok = tools.start_download({ report: 'transaction_details', stores: ['A'], from: '2025-12-01', to: '2026-01-02' });
   assert.equal(ok.progress.total, 2);
 });
+
+test('期間のない帳票は from/to を省き、店舗ごとに1ファイル', async () => {
+  const f = fake();
+  const tools = createTools({ browser: f.browser, dataDir, now });
+  assert.throws(() => tools.start_download({ report: 'product_settings', stores: ['A'], from: '2025-01-01', to: '2025-01-31' }), { code: 'PERIOD_NOT_APPLICABLE' });
+  assert.throws(() => tools.start_download({ report: 'daily_sales', stores: ['A'] }), { code: 'PERIOD_REQUIRED' });
+  assert.equal(tools._jobs.size, 0);
+  const started = tools.start_download({ report: 'product_settings', stores: ['A', 'B'] });
+  assert.equal(started.progress.total, 2);
+  assert.equal(f.calls[0].from, undefined);
+  assert.ok(!('from' in JSON.parse(JSON.stringify(started))));
+  assert.equal(tools.list_reports().reports.find(r => r.id === 'product_settings').period, false);
+  assert.equal(tools.list_reports().reports.find(r => r.id === 'daily_sales').period, true);
+  f.release();
+  await tools._jobs.get(started.job_id).promise;
+});

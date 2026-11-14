@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { defaultDataDirectory, dataDirectory, validDate, monthChunks, safeName, inspectCsv, validateRange } from '../src/core.mjs';
+import { defaultDataDirectory, dataDirectory, validDate, monthChunks, reportChunks, safeName, inspectCsv, validateRange } from '../src/core.mjs';
 
 test('OSごとの保存先', () => {
   assert.equal(defaultDataDirectory({ home: '/Users/a', platform: 'darwin', env: {} }), path.join('/Users/a', 'Library', 'Application Support', 'airregi-csv-mcp'));
@@ -42,4 +42,22 @@ test('CSVの行数を数える（UTF-8とCP932）', () => {
   assert.deepEqual(inspectCsv(Buffer.from('商品,金額\r\n')), { header: '商品,金額', dataLines: 0 });
   const sjis = Buffer.from([0x82, 0xa0, 0x2c, 0x82, 0xa2, 0x0d, 0x0a, 0x31, 0x2c, 0x32, 0x0d, 0x0a]);
   assert.deepEqual(inspectCsv(sjis), { header: 'あ,い', dataLines: 1 });
+});
+
+test('先頭の2行がデータでないCSV（商品設定）', () => {
+  const csv = Buffer.from('"v1400"\r\n"商品ID","商品名"\r\n"1","A"\r\n"2","B"\r\n');
+  assert.deepEqual(inspectCsv(csv, 2), { header: '"商品ID","商品名"', dataLines: 2 });
+  assert.deepEqual(inspectCsv(Buffer.from('"v1400"\r\n"商品ID","商品名"\r\n'), 2), { header: '"商品ID","商品名"', dataLines: 0 });
+});
+
+test('期間のない帳票は店舗ごとに1回、期間のある帳票は月ごと', () => {
+  const now = Date.parse('2026-12-31T00:00:00Z');
+  const none = { name: '商品設定', period: false };
+  assert.deepEqual(reportChunks(none, undefined, undefined, now), [{}]);
+  assert.throws(() => reportChunks(none, '2026-01-01', '2026-01-31', now), { code: 'PERIOD_NOT_APPLICABLE' });
+  assert.throws(() => reportChunks(none, undefined, '2026-01-31', now), { code: 'PERIOD_NOT_APPLICABLE' });
+  const monthly = { name: '日別売上' };
+  assert.equal(reportChunks(monthly, '2026-01-01', '2026-02-28', now).length, 2);
+  assert.throws(() => reportChunks(monthly, undefined, undefined, now), { code: 'PERIOD_REQUIRED' });
+  assert.throws(() => reportChunks(monthly, '2026-01-01', undefined, now), { code: 'PERIOD_REQUIRED' });
 });

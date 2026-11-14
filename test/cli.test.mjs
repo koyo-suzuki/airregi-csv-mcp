@@ -59,7 +59,7 @@ test('help と、指定の誤り', async () => {
 test('reports を JSON で出す', async () => {
   const r = await cli(['reports', '--json']);
   assert.equal(r.code, EXIT.OK);
-  assert.equal(JSON.parse(r.out).reports.length, 4);
+  assert.equal(JSON.parse(r.out).reports.length, 5);
 });
 
 test('全店舗の先月分を取得する', async () => {
@@ -108,4 +108,22 @@ test('コマンドとして起動できる（Chrome は起動しない）', () =
   assert.match(r.stdout, /daily_sales/);
   const bad = spawnSync(process.execPath, [cliPath, 'download'], { encoding: 'utf8' });
   assert.equal(bad.status, EXIT.USAGE);
+});
+
+test('期間のない帳票は期間のオプションなしで取得し、付けると断る', async () => {
+  const r = await cli(['download', '--report', 'product_settings', '--store', 'A店']);
+  assert.equal(r.code, EXIT.OK);
+  const [, args] = r.browser.calls.find(c => c[0] === 'download');
+  assert.equal(args.report.id, 'product_settings');
+  assert.equal(args.from, undefined);
+  assert.ok(r.err.includes('期間なし'));
+  assert.ok(!r.err.includes('undefined') && !r.out.includes('undefined'));
+  for (const opt of [['--last-month'], ['--month', '2026-10'], ['--from', '2026-10-01', '--to', '2026-10-31'], ['--to', '2026-10-31']]) {
+    const bad = await cli(['download', '--report', 'product_settings', '--store', 'A店', ...opt]);
+    assert.equal(bad.code, EXIT.USAGE, opt.join(' '));
+    assert.ok(!bad.browser.calls.length);
+  }
+  const all = await cli(['download', '--report', 'product_settings', '--all-stores']);
+  assert.equal(all.code, EXIT.OK);
+  assert.deepEqual(all.browser.calls.find(c => c[0] === 'download')[1].stores, ['A店', 'B店']);
 });

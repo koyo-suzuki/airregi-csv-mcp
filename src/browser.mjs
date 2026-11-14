@@ -1,7 +1,7 @@
 import { chromium } from 'playwright-core';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { AppError, safeName, monthChunks, writePrivate, ensurePrivateDir, inspectCsv } from './core.mjs';
+import { AppError, safeName, reportChunks, writePrivate, ensurePrivateDir, inspectCsv } from './core.mjs';
 
 const ENTRY = 'https://airregi.jp/CLP/view/salesList/';
 const STORE_SELECT = 'https://airregi.jp/CLP/view/displayPlfSettingStoreSelect/?transitionUrl=' + encodeURIComponent(ENTRY);
@@ -11,6 +11,25 @@ const ALLOWED_HOSTS = ['airregi.jp', 'connect.airregi.jp'];
 export const MAX_FILES = 120;
 
 export function periodLabel({ from, to }) { return from.replaceAll('-', '') + '-' + to.replaceAll('-', ''); }
+
+// エアレジが付けたファイル名が、帳票と期間に合うか確かめ、保存するファイル名を返す。合わなければ保存しない。
+//   期間のある帳票：<sourcePrefix><期間>… → <filePrefix>_<期間>_<店舗>.csv
+//   期間のない帳票：<sourcePrefix><sourceName> → <filePrefix>_<取得日 YYYYMMDD>_<店舗>.csv
+//                  （取得日は、エアレジのファイル名に入るダウンロード日時の日付）
+export function savedFilename(report, store, chunk, sourceFilename) {
+  if (report.period === false) {
+    const rest = sourceFilename.startsWith(report.sourcePrefix) ? sourceFilename.slice(report.sourcePrefix.length) : '';
+    if (!report.sourceName.test(rest))
+      throw new AppError('DOWNLOAD_NAME_MISMATCH', 'ダウンロードしたファイルの種類が指定と一致しないため、保存しませんでした。', { sourceFilename, expectedPrefix: report.sourcePrefix });
+    return `${report.filePrefix}_${rest.slice(0, 8)}_${safeName(store)}.csv`;
+  }
+  const period = periodLabel(chunk);
+  // 月単位の帳票は、今月分でもファイル名の期間が月末までになる。
+  const sourcePeriod = report.sourcePeriod ? report.sourcePeriod(chunk) : period;
+  if (!sourceFilename.startsWith(report.sourcePrefix + sourcePeriod) || !sourceFilename.toLowerCase().endsWith('.csv'))
+    throw new AppError('DOWNLOAD_NAME_MISMATCH', 'ダウンロードしたファイルの種類・期間が指定と一致しないため、保存しませんでした。', { sourceFilename, expectedPrefix: report.sourcePrefix + sourcePeriod });
+  return `${report.filePrefix}_${period}_${safeName(store)}.csv`;
+}
 
 export class AirregiBrowser {
   constructor({ dataDir, headless = false, launcher = chromium } = {}) {
@@ -67,15 +86,17 @@ export class AirregiBrowser {
 
   async openLogin() {
     return this.exclusive(async () => {
-      await this.launch(); await this.navigate(ENTRY); await this.settle(); await this.page.bringToFront();
+      await this.launch(); await this.navigate(STORE_SELECT); await this.settle(); await this.page.bringToFront();
       return { status: 'opened', message: 'Chrome でエアレジのログイン画面を開きました。利用者がログインしたら list_stores で確認してください。' };
     });
   }
 
   // ログイン画面を開き、利用者が手でログインし終わるまで待つ。終わったら店舗一覧を返す（ログイン状態も保存する）。
+  // ログインが切れかけていると、売上の画面は表示できても店舗の選択画面でログインを求められることがある。
+  // そのため、売上の画面ではなく店舗の選択画面を開いて待つ。
   async loginAndWait({ timeoutMs = 10 * 60000, intervalMs = 2000, signal } = {}) {
     return this.exclusive(async () => {
-      await this.launch(); await this.navigate(ENTRY); await this.settle(); await this.page.bringToFront();
+      await this.launch(); await this.navigate(STORE_SELECT); await this.settle(); await this.page.bringToFront();
       const deadline = Date.now() + timeoutMs;
       for (;;) {
         if (signal?.aborted) throw new AppError('CANCELLED', 'ログインの待機を中止しました。');
@@ -177,7 +198,10 @@ export class AirregiBrowser {
   }
 
   async downloadOne(report, store, chunk, directory) {
-    await this.setPeriod(report, chunk.from, chunk.to); await this.verifyStore(store);
+    // 期間のない帳票は期間を選ばない（表示の準備だけする）。
+    if (report.period === false) { if (report.prepare) await report.prepare(this.page); }
+    else await this.setPeriod(report, chunk.from, chunk.to);
+    await this.verifyStore(store);
     // ダウンロードボタンがメニューの中にある帳票は、先にメニューを開く。
     if (report.downloadMenu) {
       const menu = this.page.getByRole('button', { name: report.downloadMenu, exact: true });
@@ -192,22 +216,18 @@ export class AirregiBrowser {
     await button.click();
     const download = await pending;
     if (await download.failure()) throw new AppError('DOWNLOAD_FAILED', 'エアレジからのダウンロードに失敗しました。');
-    const period = periodLabel(chunk);
-    // 月単位の帳票は、今月分でもファイル名の期間が月末までになる。
-    const sourcePeriod = report.sourcePeriod ? report.sourcePeriod(chunk) : period;
     const sourceFilename = download.suggestedFilename();
-    if (!sourceFilename.startsWith(report.sourcePrefix + sourcePeriod) || !sourceFilename.toLowerCase().endsWith('.csv'))
-      throw new AppError('DOWNLOAD_NAME_MISMATCH', 'ダウンロードしたファイルの種類・期間が指定と一致しないため、保存しませんでした。', { sourceFilename, expectedPrefix: report.sourcePrefix + sourcePeriod });
-    const file = path.join(directory, `${report.filePrefix}_${period}_${safeName(store)}.csv`);
+    const file = path.join(directory, savedFilename(report, store, chunk, sourceFilename));
     await download.saveAs(file); await fs.chmod(file, 0o600).catch(() => {});
     await this.verifyStore(store);
-    const { dataLines } = inspectCsv(await fs.readFile(file));
+    const { dataLines } = inspectCsv(await fs.readFile(file), report.headerLines);
     return { file, sourceFilename, dataLines };
   }
 
   async downloadBatch({ report, stores, from, to, directory, onProgress = () => {}, signal }) {
     if (!Array.isArray(stores) || !stores.length || new Set(stores).size !== stores.length) throw new AppError('INVALID_STORES', '店舗を1件以上、重複せずに指定してください。');
-    const chunks = monthChunks(from, to);
+    // 期間のない帳票は、店舗ごとに1ファイル（chunk は {}）。
+    const chunks = reportChunks(report, from, to);
     const total = stores.length * chunks.length;
     if (total > MAX_FILES) throw new AppError('TOO_MANY', `一度に取得できるのは ${MAX_FILES} ファイル（店舗数 × 月数）までです。`);
     return this.exclusive(async () => {
