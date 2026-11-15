@@ -47,7 +47,7 @@ export function createServer({ tools, version = '0.2.0' }) {
   }, wrap(() => tools.list_stores()));
 
   server.registerTool('start_download', {
-    description: '指定した帳票のCSVを、店舗ごと・月ごとに取得して保存します。期間のない帳票（list_reports で period が false。例：product_settings）は from と to を省き、店舗ごとに1ファイル取得します。すぐに job_id を返すので、get_download で終わるまで確認してください。取得に失敗した店舗や期間を売上ゼロと扱わないでください。',
+    description: '指定した帳票のCSVを、店舗ごと・月ごとに取得して保存します。期間のない帳票（list_reports で period が false。例：product_settings、category_settings）は from と to を省き、店舗ごとに1ファイル取得します。すぐに job_id を返すので、get_download で終わるまで確認してください。取得に失敗した店舗や期間を売上ゼロと扱わないでください。',
     inputSchema: {
       report: z.enum(REPORTS.map(r => r.id)).describe('帳票のID（list_reports で確認）'),
       stores: z.array(z.string().min(1)).min(1).describe('店舗名（list_stores で確認）'),

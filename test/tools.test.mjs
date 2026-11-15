@@ -98,6 +98,7 @@ test('期間のない帳票は from/to を省き、店舗ごとに1ファイル'
   assert.equal(f.calls[0].from, undefined);
   assert.ok(!('from' in JSON.parse(JSON.stringify(started))));
   assert.equal(tools.list_reports().reports.find(r => r.id === 'product_settings').period, false);
+  assert.equal(tools.list_reports().reports.find(r => r.id === 'category_settings').period, false);
   assert.equal(tools.list_reports().reports.find(r => r.id === 'daily_sales').period, true);
   f.release();
   await tools._jobs.get(started.job_id).promise;

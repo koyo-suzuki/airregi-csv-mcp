@@ -23,7 +23,7 @@ download のオプション:
   --report <ID>           帳票のID（reports で確認）。必須
   --store <店舗名>        店舗。何回でも指定できる
   --all-stores            全店舗（--store の代わり）
-  期間（どれか1つ。期間のない帳票 product_settings では付けない）:
+  期間（どれか1つ。期間のない帳票 product_settings・category_settings では付けない）:
   --last-month            先月の1日から月末まで
   --this-month            今月の1日から今日まで
   --month <YYYY-MM>       指定した月の1日から月末まで

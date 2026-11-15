@@ -149,6 +149,14 @@ airregi-csv で、全店舗の商品設定（product_settings）のCSVを取っ�
 
 商品設定は、取得した時点の商品とバリエーションの設定を、店舗ごとに1ファイルで保存します。
 
+### カテゴリー設定（期間なし）
+
+```text
+airregi-csv で、全店舗のカテゴリー設定（category_settings）のCSVを取ってきてください。期間のない帳票なので、from と to は付けないでください。
+```
+
+カテゴリー設定は、カテゴリーID・名前・略称・表示/非表示の一覧を、店舗ごとに1ファイルで保存します。
+
 ### AIに守ってほしいこと（どのプロンプトにも付け足せます）
 
 ```text
@@ -181,10 +189,14 @@ node C:\Users\you\airregi-csv-mcp\src\cli.mjs download --report daily_sales --al
 node C:\Users\you\airregi-csv-mcp\src\cli.mjs download --report product_sales --store "〇〇店" --store "△△店" --month 2026-10 --out C:\airregi\product
 ```
 
-期間のない帳票（商品設定）は、期間のオプションを付けずに実行します。付けると、取得を始めずに終了コード64で終わります。
+期間のない帳票（商品設定・カテゴリー設定）は、期間のオプションを付けずに実行します。付けると、取得を始めずに終了コード64で終わります。
 
 ```bash
-node D:\claude-code\airregi-csv-desktop\src\cli.mjs download --report product_settings --all-stores
+node C:\Users\you\airregi-csv-mcp\src\cli.mjs download --report product_settings --all-stores
+```
+
+```bash
+node C:\Users\you\airregi-csv-mcp\src\cli.mjs download --report category_settings --all-stores
 ```
 
 ほかのコマンドと、オプションの一覧は次のとおりです。
@@ -201,7 +213,7 @@ node D:\claude-code\airregi-csv-desktop\src\cli.mjs download --report product_se
 | `--report <ID>` | 帳票のID（`daily_sales` など） |
 | `--store <店舗名>` | 店舗。何回でも付けられます |
 | `--all-stores` | 全店舗 |
-| `--last-month` | 先月の1日から月末まで（ここから `--to` までの期間のオプションは、商品設定では付けません） |
+| `--last-month` | 先月の1日から月末まで（ここから `--to` までの期間のオプションは、商品設定・カテゴリー設定では付けません） |
 | `--this-month` | 今月の1日から今日まで |
 | `--month <YYYY-MM>` | 指定した月 |
 | `--from <日付>` と `--to <日付>` | 開始日と終了日（YYYY-MM-DD） |
@@ -263,6 +275,7 @@ schtasks /Create /TN "airregi-csv monthly" /SC MONTHLY /D 1 /ST 09:00 /TR "C:\ai
 | `daily_sales` | 日別売上 | 月の1日から月末まで（今月は今日まで） |
 | `transaction_details` | 会計明細 | 月の1日から月末まで。前月1日以降だけ |
 | `product_settings` | 商品設定 | なし。店舗ごとに、取得した時点の設定を1ファイル |
+| `category_settings` | カテゴリー設定 | なし。店舗ごとに、取得した時点の設定を1ファイル |
 
 一度に取得できるのは、店舗数×月数で120ファイルまでです（期間のない帳票は店舗数）。
 
@@ -273,8 +286,8 @@ schtasks /Create /TN "airregi-csv monthly" /SC MONTHLY /D 1 /ST 09:00 /TR "C:\ai
 | `LOGIN_REQUIRED` が返る | AIに `open_login` を頼み、開いたChromeで手でログインしてから、もう一度頼みます |
 | `CHROME_MISSING` が返る | Google Chrome を入れます |
 | `PERIOD_UNSUPPORTED` が返る | 日別売上と会計明細は、期間を月の1日から月末にします。会計明細は前月1日以降にします |
-| `PERIOD_NOT_APPLICABLE` が返る | 商品設定には期間がありません。`from` と `to`（コマンドでは期間のオプション）を付けずに実行します |
-| `PERIOD_REQUIRED` が返る | 商品設定のほかの帳票は、`from` と `to` が必要です |
+| `PERIOD_NOT_APPLICABLE` が返る | 商品設定・カテゴリー設定には期間がありません。`from` と `to`（コマンドでは期間のオプション）を付けずに実行します |
+| `PERIOD_REQUIRED` が返る | 商品設定・カテゴリー設定のほかの帳票は、`from` と `to` が必要です |
 | `BUSY` が返る | 前の取得が終わるまで待ちます |
 | `DOWNLOAD_NAME_MISMATCH` や `BROWSER_CHANGED` が返る | エアレジの画面が変わった可能性があります。`src/reports.mjs` の定義を直す必要があります |
 | AIがツールを見つけられない | AIを起動し直します。それでもだめなら、登録したパスが正しいかを確かめます |
