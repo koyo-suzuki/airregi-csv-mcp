@@ -59,7 +59,7 @@ test('help と、指定の誤り', async () => {
 test('reports を JSON で出す', async () => {
   const r = await cli(['reports', '--json']);
   assert.equal(r.code, EXIT.OK);
-  assert.equal(JSON.parse(r.out).reports.length, 5);
+  assert.equal(JSON.parse(r.out).reports.length, 6);
 });
 
 test('全店舗の先月分を取得する', async () => {

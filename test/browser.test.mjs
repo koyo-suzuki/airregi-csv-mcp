@@ -164,6 +164,10 @@ test('保存するファイル名と、エアレジのファイル名の確認',
   assert.equal(savedFilename(ps, '渋谷/店', {}, '商品一括編集_20261115013640.csv'), '商品設定_20261115_渋谷_店.csv');
   for (const bad of ['商品一括編集_20261115.csv', '商品一括編集_20261115013640.xlsx', '商品一括編集_20261115013640.zip', 'カテゴリー_20261115013640.csv'])
     assert.throws(() => savedFilename(ps, 'A', {}, bad), { code: 'DOWNLOAD_NAME_MISMATCH' });
+  const cs = getReport('category_settings');
+  assert.equal(savedFilename(cs, '渋谷店', {}, 'カテゴリー_20261115105722.csv'), 'カテゴリー設定_20261115_渋谷店.csv');
+  for (const bad of ['カテゴリー_20261115.csv', '商品一括編集_20261115105722.csv', 'カテゴリー_20261115105722.zip'])
+    assert.throws(() => savedFilename(cs, 'A', {}, bad), { code: 'DOWNLOAD_NAME_MISMATCH' });
   const vs = getReport('variation_sales');
   const chunk = { from: '2026-01-01', to: '2026-01-31' };
   assert.equal(savedFilename(vs, 'A', chunk, 'バリエーション別売上_20260101-20260131.csv'), 'バリエーション別売上_20260101-20260131_A.csv');

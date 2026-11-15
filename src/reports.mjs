@@ -161,6 +161,22 @@ export const REPORTS = [
     headerLines: 2,
     filePrefix: '商品設定',
   },
+  {
+    id: 'category_settings',
+    name: 'カテゴリー設定',
+    description: '登録しているカテゴリーの一覧（カテゴリーID・名前・略称・表示/非表示）。期間はなく、店舗ごとに今の設定を1ファイルで取得します。',
+    verified: true,
+    period: false,
+    // カテゴリー設定の画面（/view/settingCategory/）にはCSVのダウンロードがない。
+    // 商品設定と同じ「ファイルで一括編集」の画面（#/upload）の「カテゴリーID確認用ファイル(CSV)」から出す。
+    url: SETTING_MENU,
+    downloadMenu: '商品をCSVで編集する',
+    downloadButton: 'カテゴリーID確認用ファイル(CSV)',
+    // ファイル名の数字はダウンロードした日時（日本時間、YYYYMMDDhhmmss）。例：カテゴリー_20261115105722.csv
+    sourcePrefix: 'カテゴリー_',
+    sourceName: /^\d{14}\.csv$/i,
+    filePrefix: 'カテゴリー設定',
+  },
 ];
 
 export function getReport(id) {
